@@ -1,0 +1,12 @@
+# 环境变量（含 API Key，绝对不能上传）
+.env
+
+# 虚拟环境
+venv/
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 向量数据库（可以传，但文件较大，也可以不传）
+chroma_db/

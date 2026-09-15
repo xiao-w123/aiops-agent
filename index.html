@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>智能运维 Agent</title>
+    <style>
+        body {
+            font-family: "Microsoft YaHei", sans-serif;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 { color: #333; }
+        #input-area {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        #message {
+            flex: 1;
+            padding: 12px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            background: #0066cc;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        button:disabled { background: #999; cursor: wait; }
+        #output {
+            background: white;
+            padding: 24px;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            line-height: 1.8;
+            min-height: 200px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 智能运维 Agent</h1>
+    <p>输入一个运维问题，Agent 会自动查监控、查日志、查发布记录、翻历史故障报告。</p>
+
+    <div id="input-area">
+        <input id="message" type="text"
+               placeholder="例如：帮我看看 order-service 昨晚为什么响应变慢了"
+               value="帮我看看 order-service 昨晚为什么响应变慢了">
+        <button id="send" onclick="sendMessage()">排查</button>
+    </div>
+
+    <div id="output">等待输入…</div>
+
+    <script>
+        async function sendMessage() {
+            const input = document.getElementById("message");
+            const output = document.getElementById("output");
+            const button = document.getElementById("send");
+            const message = input.value.trim();
+            if (!message) return;
+
+            output.textContent = "Agent 正在排查中，请稍候…（通常需要 20-40 秒）";
+            button.disabled = true;
+
+            try {
+                const res = await fetch("/chat", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ message })
+                });
+                const data = await res.json();
+                output.textContent = data.reply;
+            } catch (e) {
+                output.textContent = "出错了：" + e.message;
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        document.getElementById("message").addEventListener("keydown", (e) => {
+            if (e.key === "Enter") sendMessage();
+        });
+    </script>
+</body>
+</html>
