@@ -1,0 +1,246 @@
+[
+  {
+    "id": "L1-001",
+    "level": "L1",
+    "question": "order-service 昨晚的 CPU 使用率是多少？",
+    "ground_truth": "95%",
+    "expected_tools": ["query_prometheus_tool"],
+    "key_evidence": ["95%"]
+  },
+  {
+    "id": "L1-002",
+    "level": "L1",
+    "question": "order-service 昨晚发过版吗？",
+    "ground_truth": "发过 v2.3.1",
+    "expected_tools": ["get_deployment_record_tool"],
+    "key_evidence": ["v2.3.1"]
+  },
+  {
+    "id": "L1-003",
+    "level": "L1",
+    "question": "order-service 的响应时间是多少？",
+    "ground_truth": "3.2s",
+    "expected_tools": ["query_prometheus_tool"],
+    "key_evidence": ["3.2"]
+  },
+  {
+    "id": "L1-004",
+    "level": "L1",
+    "question": "user-service 的内存使用率是多少？",
+    "ground_truth": "85%",
+    "expected_tools": ["query_prometheus_tool"],
+    "key_evidence": ["85"]
+  },
+  {
+    "id": "L1-005",
+    "level": "L1",
+    "question": "product-service 最近发过什么版本？",
+    "ground_truth": "v1.8.0",
+    "expected_tools": ["get_deployment_record_tool"],
+    "key_evidence": ["v1.8.0"]
+  },
+  {
+    "id": "L1-006",
+    "level": "L1",
+    "question": "order-service 的日志里有没有报错？",
+    "ground_truth": "有 Connection pool exhausted",
+    "expected_tools": ["search_logs_tool"],
+    "key_evidence": ["Connection pool"]
+  },
+
+  {
+    "id": "L2-001",
+    "level": "L2",
+    "question": "order-service 昨晚的监控和日志分别有什么异常？",
+    "ground_truth": "CPU 95% 且日志有连接池耗尽",
+    "expected_tools": ["query_prometheus_tool", "search_logs_tool"],
+    "key_evidence": ["95", "Connection pool"]
+  },
+  {
+    "id": "L2-002",
+    "level": "L2",
+    "question": "product-service 凌晨的日志和缓存情况怎么样？",
+    "ground_truth": "缓存命中率下降，日志有 Cache miss",
+    "expected_tools": ["search_logs_tool"],
+    "key_evidence": ["Cache miss"]
+  },
+  {
+    "id": "L2-003",
+    "level": "L2",
+    "question": "user-service 的内存和日志有什么异常？",
+    "ground_truth": "内存 85% 且有 OOM",
+    "expected_tools": ["query_prometheus_tool", "search_logs_tool"],
+    "key_evidence": ["Memory", "OOM"]
+  },
+  {
+    "id": "L2-004",
+    "level": "L2",
+    "question": "order-service 的监控数据怎么样？顺便看看昨晚发版了吗？",
+    "ground_truth": "CPU 高且昨晚发过版",
+    "expected_tools": ["query_prometheus_tool", "get_deployment_record_tool"],
+    "key_evidence": ["95", "v2.3.1"]
+  },
+  {
+    "id": "L2-005",
+    "level": "L2",
+    "question": "product-service 最近有没有发版？日志里有什么异常？",
+    "ground_truth": "发过 v1.8.0，日志有 Cache miss",
+    "expected_tools": ["get_deployment_record_tool", "search_logs_tool"],
+    "key_evidence": ["v1.8.0", "Cache"]
+  },
+  {
+    "id": "L2-006",
+    "level": "L2",
+    "question": "user-service 的监控指标和发布记录分别是什么？",
+    "ground_truth": "内存 85%，v3.0.0",
+    "expected_tools": ["query_prometheus_tool", "get_deployment_record_tool"],
+    "key_evidence": ["85", "v3.0.0"]
+  },
+
+  {
+    "id": "L3-001",
+    "level": "L3",
+    "question": "order-service 昨晚为什么响应变慢？",
+    "ground_truth": "连接池耗尽",
+    "expected_tools": ["query_prometheus_tool", "search_logs_tool", "get_deployment_record_tool", "search_fault_reports"],
+    "key_evidence": ["CPU", "Connection pool", "v2.3.1"]
+  },
+  {
+    "id": "L3-002",
+    "level": "L3",
+    "question": "product-service 凌晨超时是什么原因？",
+    "ground_truth": "缓存穿透",
+    "expected_tools": ["search_logs_tool", "search_fault_reports"],
+    "key_evidence": ["Cache", "缓存"]
+  },
+  {
+    "id": "L3-003",
+    "level": "L3",
+    "question": "user-service 内存一直涨是怎么回事？",
+    "ground_truth": "内存泄漏",
+    "expected_tools": ["query_prometheus_tool", "search_logs_tool", "search_fault_reports"],
+    "key_evidence": ["Memory", "OOM", "内存"]
+  },
+  {
+    "id": "L3-004",
+    "level": "L3",
+    "question": "user-service 内存泄漏的根本原因是什么？",
+    "ground_truth": "异常处理分支未关闭数据库连接",
+    "expected_tools": ["query_prometheus_tool", "search_logs_tool", "search_fault_reports"],
+    "key_evidence": ["内存", "泄漏", "连接"]
+  },
+  {
+    "id": "L3-005",
+    "level": "L3",
+    "question": "product-service 的缓存问题出在哪？",
+    "ground_truth": "缓存穿透",
+    "expected_tools": ["search_logs_tool", "search_fault_reports"],
+    "key_evidence": ["缓存", "穿透", "Cache"]
+  },
+  {
+    "id": "L3-006",
+    "level": "L3",
+    "question": "order-service 的连接池问题应该怎么处理？",
+    "ground_truth": "回滚版本，调大 max_connections",
+    "expected_tools": ["get_deployment_record_tool", "search_fault_reports"],
+    "key_evidence": ["回滚", "max_connections", "连接池"]
+  },
+
+  {
+    "id": "L4-001",
+    "level": "L4",
+    "question": "历史上有没有类似的连接池故障？当时是怎么解决的？",
+    "ground_truth": "2024-01-10 连接池故障，回滚并调整 max_connections",
+    "expected_tools": ["search_fault_reports"],
+    "key_evidence": ["连接池", "max_connections", "回滚"]
+  },
+  {
+    "id": "L4-002",
+    "level": "L4",
+    "question": "之前遇到过缓存穿透吗？怎么解决的？",
+    "ground_truth": "2024-02-15 缓存穿透，空值缓存 + 限流",
+    "expected_tools": ["search_fault_reports"],
+    "key_evidence": ["缓存穿透", "空值", "限流"]
+  },
+  {
+    "id": "L4-003",
+    "level": "L4",
+    "question": "内存泄漏一般是什么原因造成的？",
+    "ground_truth": "资源未释放",
+    "expected_tools": ["search_fault_reports"],
+    "key_evidence": ["内存", "泄漏"]
+  },
+  {
+    "id": "L4-004",
+    "level": "L4",
+    "question": "以前连接池故障是怎么发现和定位的？",
+    "ground_truth": "通过监控 CPU 和日志 Connection pool exhausted",
+    "expected_tools": ["search_fault_reports"],
+    "key_evidence": ["连接池", "日志", "CPU"]
+  },
+  {
+    "id": "L4-005",
+    "level": "L4",
+    "question": "缓存相关故障的历史经验有哪些？",
+    "ground_truth": "2024-02-15 缓存穿透，空值缓存 + 限流",
+    "expected_tools": ["search_fault_reports"],
+    "key_evidence": ["缓存", "空值"]
+  },
+  {
+    "id": "L4-006",
+    "level": "L4",
+    "question": "历史上内存类故障是怎么排查的？",
+    "ground_truth": "jmap 导出堆快照，发现未释放连接",
+    "expected_tools": ["search_fault_reports"],
+    "key_evidence": ["内存", "连接"]
+  },
+
+  {
+    "id": "L5-001",
+    "level": "L5",
+    "question": "order-service 现在有没有故障？",
+    "ground_truth": "无故障",
+    "expected_tools": ["query_prometheus_tool"],
+    "key_evidence": ["正常"]
+  },
+  {
+    "id": "L5-002",
+    "level": "L5",
+    "question": "product-service 现在运行正常吗？",
+    "ground_truth": "无故障",
+    "expected_tools": ["query_prometheus_tool"],
+    "key_evidence": ["正常"]
+  },
+  {
+    "id": "L5-003",
+    "level": "L5",
+    "question": "帮我查一下 payment-service 的监控",
+    "ground_truth": "查不到该服务",
+    "expected_tools": ["query_prometheus_tool"],
+    "key_evidence": ["未找到"]
+  },
+  {
+    "id": "L5-004",
+    "level": "L5",
+    "question": "order-service 今天有没有内存泄漏？",
+    "ground_truth": "无内存泄漏",
+    "expected_tools": ["query_prometheus_tool"],
+    "key_evidence": ["正常"]
+  },
+  {
+    "id": "L5-005",
+    "level": "L5",
+    "question": "product-service 有没有连接池问题？",
+    "ground_truth": "无连接池问题",
+    "expected_tools": ["search_logs_tool"],
+    "key_evidence": ["未找到"]
+  },
+  {
+    "id": "L5-006",
+    "level": "L5",
+    "question": "推荐一下怎么优化 order-service",
+    "ground_truth": "需要更多信息，不应编造具体故障",
+    "expected_tools": [],
+    "key_evidence": ["正常", "没有"]
+  }
+]
