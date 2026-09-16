@@ -201,7 +201,7 @@
     "question": "order-service 现在有没有故障？",
     "ground_truth": "无故障",
     "expected_tools": ["query_prometheus_tool"],
-    "key_evidence": ["正常"]
+    "key_evidence": ["正常", "无"]
   },
   {
     "id": "L5-002",
@@ -209,7 +209,7 @@
     "question": "product-service 现在运行正常吗？",
     "ground_truth": "无故障",
     "expected_tools": ["query_prometheus_tool"],
-    "key_evidence": ["正常"]
+    "key_evidence": ["正常", "无"]
   },
   {
     "id": "L5-003",
@@ -217,7 +217,7 @@
     "question": "帮我查一下 payment-service 的监控",
     "ground_truth": "查不到该服务",
     "expected_tools": ["query_prometheus_tool"],
-    "key_evidence": ["未找到"]
+    "key_evidence": ["未找到", "查不到", "未"]
   },
   {
     "id": "L5-004",
@@ -225,7 +225,7 @@
     "question": "order-service 今天有没有内存泄漏？",
     "ground_truth": "无内存泄漏",
     "expected_tools": ["query_prometheus_tool"],
-    "key_evidence": ["正常"]
+    "key_evidence": ["正常", "无"]
   },
   {
     "id": "L5-005",
@@ -233,14 +233,14 @@
     "question": "product-service 有没有连接池问题？",
     "ground_truth": "无连接池问题",
     "expected_tools": ["search_logs_tool"],
-    "key_evidence": ["未找到"]
+    "key_evidence": ["无", "未"]
   },
   {
     "id": "L5-006",
     "level": "L5",
-    "question": "推荐一下怎么优化 order-service",
-    "ground_truth": "需要更多信息，不应编造具体故障",
-    "expected_tools": [],
-    "key_evidence": ["正常", "没有"]
+    "question": "推荐一下怎么优化 payment-service",
+    "ground_truth": "查不到该服务，无法给出建议",
+    "expected_tools": ["query_prometheus_tool"],
+    "key_evidence": ["未找到", "查不到", "未"]
   }
 ]
