@@ -11,4 +11,10 @@ __pycache__/
 # 向量数据库（可以传，但文件较大，也可以不传）
 chroma_db/
 
+# 评测结果（原始明细每次运行都会重新生成，不必入库）
+results/raw_*.json
+results/raw_*.csv
+results/*.log
+
+# 注意：docs/ 不要加入忽略列表，毕设文档需要随代码一起提交
 docs/

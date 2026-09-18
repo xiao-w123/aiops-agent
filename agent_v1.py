@@ -1,32 +1,26 @@
-from dotenv import load_dotenv
-load_dotenv()
+"""agent_v1：基础 Agent（无 RAG 检索）。
 
-from langchain_openai import ChatOpenAI
-from langchain_core.tools import tool
+保留本文件的目的是作为"不使用历史故障知识库"的对照组。
+真正的工具定义与 Agent 构造逻辑已统一收敛到 agent_core.py。
+
+用法：python agent_v1.py
+"""
+
+from agent_core import (
+    build_llm,
+    query_prometheus_tool,
+    search_logs_tool,
+    get_deployment_record_tool,
+)
+
 from langchain.agents import create_agent
-from tools import query_prometheus, search_logs, get_deployment_record
 
-@tool
-def query_prometheus_tool(metric_name: str, service: str) -> str:
-    """查询监控指标。metric_name 可以是 cpu_usage, memory_usage, response_time。"""
-    return query_prometheus(metric_name, service)
+QUESTION = "帮我看看 order-service 昨晚为什么响应变慢了"
 
-@tool
-def search_logs_tool(keyword: str, service: str) -> str:
-    """搜索服务日志。keyword 是搜索关键词，如 error, timeout, exception。"""
-    return search_logs(keyword, service)
-
-@tool
-def get_deployment_record_tool(service: str) -> str:
-    """查询服务的发布记录。"""
-    return get_deployment_record(service)
-
-llm = ChatOpenAI(model="deepseek-chat")
+# 刻意不含 search_fault_reports，用于对比"有无历史故障检索"的差异
 tools = [query_prometheus_tool, search_logs_tool, get_deployment_record_tool]
 
-agent = create_agent(llm, tools)
-
-result = agent.invoke({
-    "messages": [{"role": "user", "content": "帮我看看 order-service 昨晚为什么响应变慢了"}]
-})
-print(result["messages"][-1].content)
+if __name__ == "__main__":
+    agent = create_agent(build_llm(), tools)
+    result = agent.invoke({"messages": [{"role": "user", "content": QUESTION}]})
+    print(result["messages"][-1].content)

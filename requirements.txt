@@ -1,0 +1,25 @@
+# 智能运维 Agent 依赖
+# 安装：pip install -r requirements.txt
+# 国内加速：pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# --- Agent 与 LLM ---
+langchain==1.4.0
+langchain-core==1.6.3
+langchain-community==0.4.2
+langchain-openai==1.6.2
+langchain-text-splitters==1.1.2
+langgraph==1.2.11
+openai==3.14.0
+
+# --- RAG 与向量库 ---
+chromadb==1.5.9
+sentence-transformers==6.0.1
+
+# --- 后端服务 ---
+fastapi==0.141.1
+uvicorn==0.53.0
+pydantic==2.13.5
+
+# --- 其他 ---
+python-dotenv==1.2.3
+numpy==2.5.3

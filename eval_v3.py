@@ -1,197 +1,112 @@
-import json
-import time
-from collections import defaultdict
-from dotenv import load_dotenv
-load_dotenv()
+"""评测入口（可复现）。
 
-import os
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+用法
+----
+    # 单配置：本方案（含证据校验），重复 3 次
+    python eval_v3.py --configs verified --repeats 3
 
-from langchain_openai import ChatOpenAI
-from langchain_core.tools import tool
-from langchain.agents import create_agent
-from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from tools import query_prometheus, search_logs, get_deployment_record
+    # 完整消融：基线与本方案各跑 3 次并生成对比表
+    python eval_v3.py --configs both --repeats 3 --warmup 1
 
-# ---------- 初始化 ----------
-embeddings = HuggingFaceEmbeddings(model_name="BAAI/bge-small-zh-v1.5")
-vectorstore = Chroma(persist_directory="./chroma_db", embedding_function=embeddings)
-retriever = vectorstore.as_retriever(search_kwargs={"k": 2})
+    # 先小样本验证链路是否正常，避免一上来就烧掉 60 次调用
+    python eval_v3.py --configs both --limit 4 --repeats 1
 
-@tool
-def query_prometheus_tool(metric_name: str, service: str) -> str:
-    """查询监控指标。metric_name 可以是 cpu_usage, memory_usage, response_time。"""
-    return query_prometheus(metric_name, service)
-
-@tool
-def search_logs_tool(keyword: str, service: str) -> str:
-    """搜索服务日志。keyword 是搜索关键词，如 error, timeout, exception。"""
-    return search_logs(keyword, service)
-
-@tool
-def get_deployment_record_tool(service: str) -> str:
-    """查询服务的发布记录。"""
-    return get_deployment_record(service)
-
-@tool
-def search_fault_reports(query: str) -> str:
-    """搜索历史故障报告，了解类似故障的原因和解决方案。当需要参考历史经验时使用。"""
-    results = retriever.invoke(query)
-    return "\n---\n".join([r.page_content for r in results])
-
-llm = ChatOpenAI(model="deepseek-chat")
-tools = [query_prometheus_tool, search_logs_tool,
-         get_deployment_record_tool, search_fault_reports]
-agent = create_agent(llm, tools)
-
-# ---------- 证据校验 Prompt ----------
-VERIFY_PROMPT = """你是一个证据校验员。以下是 Agent 生成的诊断报告，以及工具返回的原始数据。
-
-请**只检查一件事**：报告中是否给出了**具体的故障根因**，而这个根因在工具返回的数据中**找不到任何依据**？
-
-判断规则：
-- 报告说"连接池耗尽"，但日志里没有 `Connection pool exhausted` → 编造
-- 报告说"内存泄漏"，但监控显示内存正常 → 编造
-- 报告说"缓存穿透"，但日志里没有 Cache miss → 编造
-- 报告说"无异常"、"数据不足"、"当前正常" → **这不算编造，不用管**
-- 报告只是描述工具返回的数据（如"CPU 是 95%"） → **这不算编造**
-
-工具返回的原始数据：
-{tool_data}
-
-Agent 生成的报告：
-{answer}
-
-请回答：
-1. 报告中是否编造了**具体的故障根因**？（是/否）
-2. 如果有，是哪个根因？
+参数
+----
+--configs   basic / verified / both
+--repeats   每个用例重复次数（用于估计方差，建议 >= 3）
+--warmup    预热次数，不计入统计（摊掉首次加载模型/建连的开销）
+--limit     只跑前 N 条用例（调试用）
+--level     只跑指定层级，如 --level L3,L5
+--k         RAG 检索返回条数
+--model     模型名
 """
 
+import argparse
+import sys
 
-def verify_and_refine(question, answer, tool_data):
-    """只抓编造的故障根因，不抓保守回答"""
-    prompt = VERIFY_PROMPT.format(tool_data=tool_data, answer=answer)
-    verify_result = llm.invoke(prompt).content
-
-    first_line = verify_result.strip().split("\n")[0]
-    is_fabricated = first_line.startswith("1.") and "是" in first_line
-
-    if is_fabricated:
-        refined_prompt = f"""你之前的回答编造了一个具体的故障根因，但工具返回的数据里并没有支持这个根因的证据。
-
-请重新回答，严格遵循：
-1. 只能使用工具实际返回的数据作为证据
-2. 如果工具返回的数据显示正常，就明确回答"当前无异常"
-3. 如果数据不足以得出根因，就如实说明"证据不足"
-4. 不要为了给出结论而编造证据
-
-原始问题：{question}
-
-工具返回的数据：
-{tool_data}
-
-请重新回答："""
-        new_answer = llm.invoke(refined_prompt).content
-        return new_answer, True
-
-    return answer, False
+from evalframework import (
+    CONFIG_BASIC, CONFIG_VERIFIED,
+    evaluate, load_testset, render_ablation, render_summary,
+    save_diagnostics, save_results, summarize,
+)
 
 
-# ---------- 读取测试集 ----------
-testset = json.load(open("testset.json", encoding="utf-8"))
-print(f"加载了 {len(testset)} 条测试用例（含证据校验）\n")
+def build_agent(config, model, k):
+    from agent_core import build_basic_agent, build_verified_agent
 
-results = []
-level_stats = defaultdict(list)
+    if config == CONFIG_BASIC:
+        return build_basic_agent(model=model, k=k)
+    # 关键：两组共用同一个基础 Agent 构造路径，唯一变量是证据校验
+    return build_verified_agent(model=model, k=k)
 
-for i, case in enumerate(testset, 1):
-    print(f"[{i}/{len(testset)}] [{case['level']}] {case['question']}")
 
-    start = time.time()
-    result = agent.invoke({
-        "messages": [{"role": "user", "content": case["question"]}]
-    })
+def main():
+    parser = argparse.ArgumentParser(description="智能运维 Agent 评测")
+    parser.add_argument("--configs", default="both",
+                        help="basic / verified / both，可用逗号分隔")
+    parser.add_argument("--repeats", type=int, default=3, help="重复次数")
+    parser.add_argument("--warmup", type=int, default=1, help="预热次数（不计入统计）")
+    parser.add_argument("--limit", type=int, default=0, help="只跑前 N 条用例")
+    parser.add_argument("--level", default="", help="只跑指定层级，如 L3,L5")
+    parser.add_argument("--k", type=int, default=2, help="RAG 检索返回条数")
+    parser.add_argument("--model", default="deepseek-chat", help="模型名")
+    parser.add_argument("--outdir", default="results", help="结果输出目录")
+    parser.add_argument("--workers", type=int, default=4,
+                        help="并发线程数（复杂用例单次可达 40s，并发能显著压缩总耗时）")
+    parser.add_argument("--quiet", action="store_true", help="不打印逐条日志")
+    args = parser.parse_args()
 
-    raw_answer = result["messages"][-1].content
+    cases = load_testset()
+    if args.level:
+        wanted = {s.strip() for s in args.level.split(",") if s.strip()}
+        cases = [c for c in cases if c.level in wanted]
+    if args.limit:
+        cases = cases[: args.limit]
 
-    # 收集工具返回数据
-    tool_data_list = []
-    called_tools = []
-    for msg in result["messages"]:
-        if hasattr(msg, "tool_calls") and msg.tool_calls:
-            for tc in msg.tool_calls:
-                called_tools.append(tc["name"])
-        if msg.__class__.__name__ == "ToolMessage":
-            tool_data_list.append(msg.content)
-    tool_data = "\n---\n".join(tool_data_list)
+    if not cases:
+        print("没有匹配的测试用例，退出。")
+        return 1
 
-    # 证据校验
-    final_answer, was_refined = verify_and_refine(case["question"], raw_answer, tool_data)
-    elapsed = time.time() - start
+    configs = [c.strip() for c in args.configs.split(",") if c.strip()]
+    if "both" in configs:
+        configs = [CONFIG_BASIC, CONFIG_VERIFIED]
 
-    # 工具调用得分
-    if case["expected_tools"]:
-        tool_hits = sum(1 for t in case["expected_tools"] if t in called_tools)
-        tool_score = tool_hits / len(case["expected_tools"])
-    else:
-        tool_score = 1.0
+    print(f"模型: {args.model} | 检索 k={args.k} | 用例数: {len(cases)} | "
+          f"重复: {args.repeats} | 预热: {args.warmup} | 并发: {args.workers}")
+    print(f"配置: {', '.join(configs)}")
+    sessions = len(cases) * args.repeats * len(configs)
+    print(f"预计 Agent 会话数: {sessions}"
+          f"（复杂用例单次可达 30-40s，并发 {args.workers} 时"
+          f"预计墙钟时间约 {sessions * 12 / max(args.workers, 1) / 60:.0f} 分钟）\n")
 
-    # 关键词得分
-    if case["key_evidence"]:
-        kw_hits = sum(1 for kw in case["key_evidence"] if kw in final_answer)
-        kw_score = kw_hits / len(case["key_evidence"])
-    else:
-        kw_score = 1.0
+    all_results = []
+    for config in configs:
+        print(f"\n{'=' * 60}\n开始评测配置: {config}\n{'=' * 60}")
+        agent = build_agent(config, args.model, args.k)
+        results = evaluate(
+            agent, cases, config=config,
+            repeats=args.repeats, warmup=args.warmup,
+            verbose=not args.quiet, workers=args.workers,
+        )
+        all_results.extend(results)
 
-    # 根因判断（修正版）
-    if case["level"] == "L5":
-        deny_phrases = ["无异常", "未发现", "未见异常", "当前正常", "一切正常",
-                        "没有发现", "不存在", "无故障", "未检测到", "数据不足",
-                        "正常", "没有问题", "未找到", "查不到"]
-        if any(dp in final_answer for dp in deny_phrases):
-            root_correct = True
-        else:
-            fake_roots = ["连接池耗尽", "缓存穿透", "内存泄漏", "连接耗尽", "OOM killed"]
-            root_correct = not any(fr in final_answer for fr in fake_roots)
-    else:
-        key = case["ground_truth"].split()[0]
-        root_correct = key in final_answer
+    summary = summarize(all_results)
+    print("\n" + "=" * 60)
+    print("评测汇总（指标口径：均值 ± 标准差，跨重复次数统计）")
+    print("=" * 60)
+    print(render_summary(summary))
+    print(render_ablation(summary))
 
-    refine_mark = " (已校验重答)" if was_refined else ""
-    print(f"  工具: {tool_score:.0%}  关键词: {kw_score:.0%}  根因: {root_correct}{refine_mark}")
-    print(f"  耗时: {elapsed:.1f}s\n")
+    json_path, csv_path, md_path, latest = save_results(all_results, summary, args.outdir)
+    diag_path = save_diagnostics(all_results, f"{args.outdir}/diagnostics.md")
+    print(f"\n原始结果: {json_path}")
+    print(f"CSV 明细: {csv_path}")
+    print(f"报告: {md_path}")
+    print(f"最新报告副本: {latest}")
+    print(f"逐条诊断: {diag_path}")
+    return 0
 
-    results.append({
-        "level": case["level"], "tool_score": tool_score,
-        "kw_score": kw_score, "root_correct": root_correct,
-        "elapsed": elapsed,
-    })
-    level_stats[case["level"]].append({
-        "tool": tool_score, "kw": kw_score, "root": root_correct
-    })
 
-# ---------- 汇总 ----------
-print("=" * 60)
-print("评测汇总（含证据校验·最终版）")
-print("=" * 60)
-
-avg_tool = sum(r["tool_score"] for r in results) / len(results)
-avg_kw = sum(r["kw_score"] for r in results) / len(results)
-avg_root = sum(1 for r in results if r["root_correct"]) / len(results)
-avg_time = sum(r["elapsed"] for r in results) / len(results)
-
-print(f"总体:")
-print(f"  工具调用平均准确率: {avg_tool:.0%}")
-print(f"  关键词平均命中率: {avg_kw:.0%}")
-print(f"  根因定位准确率: {avg_root:.0%}")
-print(f"  平均耗时: {avg_time:.1f}s")
-print()
-
-print("分层表现:")
-for level in sorted(level_stats.keys()):
-    stats = level_stats[level]
-    t = sum(s["tool"] for s in stats) / len(stats)
-    k = sum(s["kw"] for s in stats) / len(stats)
-    r = sum(1 for s in stats if s["root"]) / len(stats)
-    print(f"  {level}: 工具 {t:.0%} | 关键词 {k:.0%} | 根因 {r:.0%} | {len(stats)} 条")
+if __name__ == "__main__":
+    sys.exit(main())
